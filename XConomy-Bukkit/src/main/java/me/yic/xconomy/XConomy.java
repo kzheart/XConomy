@@ -157,12 +157,14 @@ public class XConomy extends JavaPlugin {
         }
 
         XConomyLoad.Initial();
+        me.yic.xconomy.utils.PgCacheRefresher.start();
 
         RunBaltop.runstart();
         logger(null, 0, "===== YiC =====");
     }
 
     public void onDisable() {
+        me.yic.xconomy.utils.PgCacheRefresher.close();
 
         if (XConomyLoad.Config.IMPORTMODE){
             itd.onDisable();

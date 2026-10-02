@@ -34,6 +34,9 @@ public class PlayerConnection{
 
     public static void onJoin(CPlayer player) {
 
+        // A PostgreSQL account may return from another node; discard the old local view.
+        if (XConomyLoad.DConfig.isPostgreSQL()) Cache.removefromCache(player.getUniqueId());
+
         if (XConomyLoad.DConfig.canasync) {
             AdapterManager.runTaskAsynchronously(() -> DataLink.newPlayer(player));
         } else {
@@ -61,6 +64,12 @@ public class PlayerConnection{
 
     }
     public static void onQuit(CPlayer player) {
+
+        // Drain before a proxy can hand this account to another node. Cold transfer boundary only.
+        if (XConomyLoad.DConfig.isPostgreSQL()) {
+            me.yic.xconomy.utils.StorageWrites.flush();
+            Cache.removefromCache(player.getUniqueId());
+        }
 
         if (AdapterManager.PLUGIN.getOnlinePlayerSize() == 1) {
             Cache.clearCache();

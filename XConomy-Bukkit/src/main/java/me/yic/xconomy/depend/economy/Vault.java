@@ -34,6 +34,28 @@ import java.util.List;
 import java.util.UUID;
 
 public class Vault extends AbstractEconomy {
+    public boolean postgresWalletEnabled(){return me.yic.xconomy.data.sql.PgWallet.enabled();}
+    /** PG commit completes before success is reported. This method accepts no Bukkit player object. */
+    public java.util.concurrent.CompletableFuture<EconomyResponse> changePlayerAsync(UUID id,BigDecimal amount,boolean add){
+        if(amount==null||amount.signum()<0)return java.util.concurrent.CompletableFuture.completedFuture(new EconomyResponse(0,0,EconomyResponse.ResponseType.FAILURE,"Invalid amount"));
+        final BigDecimal cost=DataFormat.formatString(amount.toPlainString());
+        me.yic.xconomy.info.RecordInfo info=new me.yic.xconomy.info.RecordInfo("PLUGIN",null,null);
+        PlayerData view=me.yic.xconomy.data.caches.Cache.pds.get(id);
+        if(view!=null)me.yic.xconomy.adapter.comp.CallAPI.CallPlayerAccountEvent(id,view.getName(),view.getBalance(),cost,add,info);
+        java.util.concurrent.CompletableFuture<EconomyResponse> result=me.yic.xconomy.data.sql.PgWallet.change(id,cost,add,info).thenApply(r->new EconomyResponse(r.successful?cost.doubleValue():0,r.balance.doubleValue(),r.successful?EconomyResponse.ResponseType.SUCCESS:EconomyResponse.ResponseType.FAILURE,r.successful?"":"Insufficient balance, missing account or maximum exceeded"));
+        result.thenAccept(r->{if(r.transactionSuccess())org.bukkit.Bukkit.getScheduler().runTask(me.yic.xconomy.XConomy.getInstance(),()->{
+            PlayerData pd=me.yic.xconomy.data.caches.Cache.getDataFromCache(id);
+            if(pd!=null)me.yic.xconomy.data.caches.Cache.updateIntoCache(id,pd,DataFormat.formatdouble(r.balance),DataFormat.formatdouble(r.balance));
+        });});
+        return result;
+    }
+    private EconomyResponse changePg(UUID id,double amount,boolean add){
+        if(!Double.isFinite(amount)||amount<0)return new EconomyResponse(0,0,EconomyResponse.ResponseType.FAILURE,"Invalid amount");
+        try{return changePlayerAsync(id,BigDecimal.valueOf(amount),add).get(30,java.util.concurrent.TimeUnit.SECONDS);}
+        catch(InterruptedException e){Thread.currentThread().interrupt();throw new IllegalStateException("Interrupted PG balance operation",e);}
+        catch(java.util.concurrent.ExecutionException|java.util.concurrent.TimeoutException e){throw new IllegalStateException("PG balance outcome requires reconciliation",e);}
+    }
+
 
     @Override
     public EconomyResponse bankBalance(String arg0) {
@@ -116,6 +138,7 @@ public class Vault extends AbstractEconomy {
 
     @Override
     public EconomyResponse depositPlayer(String name, double amount) {
+        if(postgresWalletEnabled()&&!isNonPlayerAccount(name)){PlayerData pd=DataCon.getPlayerData(name);if(pd==null)return new EconomyResponse(0,0,EconomyResponse.ResponseType.FAILURE,"No account");return changePg(pd.getUniqueId(),amount,true);}
         if (AdapterManager.BanModiftyBalance()) {
             return new EconomyResponse(0.0D, 0.0D, EconomyResponse.ResponseType.FAILURE,
                     "[BungeeCord] No player in server");
@@ -144,6 +167,7 @@ public class Vault extends AbstractEconomy {
 
     @Override
     public EconomyResponse depositPlayer(OfflinePlayer pp, double amount) {
+        if(postgresWalletEnabled()){if(DataCon.getPlayerData(pp.getUniqueId())==null&&!createPlayerAccount(pp))return new EconomyResponse(0,0,EconomyResponse.ResponseType.FAILURE,"No account");return changePg(pp.getUniqueId(),amount,true);}
         if (AdapterManager.BanModiftyBalance()) {
             return new EconomyResponse(0.0D, 0.0D, EconomyResponse.ResponseType.FAILURE,
                     "[BungeeCord] No player in server");
@@ -304,6 +328,7 @@ public class Vault extends AbstractEconomy {
 
     @Override
     public EconomyResponse withdrawPlayer(String name, double amount) {
+        if(postgresWalletEnabled()&&!isNonPlayerAccount(name)){PlayerData pd=DataCon.getPlayerData(name);if(pd==null)return new EconomyResponse(0,0,EconomyResponse.ResponseType.FAILURE,"No account");return changePg(pd.getUniqueId(),amount,false);}
         if (AdapterManager.BanModiftyBalance()) {
             return new EconomyResponse(0.0D, 0.0D, EconomyResponse.ResponseType.FAILURE,
                     "[BungeeCord] No player in server");
@@ -332,6 +357,7 @@ public class Vault extends AbstractEconomy {
 
     @Override
     public EconomyResponse withdrawPlayer(OfflinePlayer pp, double amount) {
+        if(postgresWalletEnabled()){if(DataCon.getPlayerData(pp.getUniqueId())==null&&!createPlayerAccount(pp))return new EconomyResponse(0,0,EconomyResponse.ResponseType.FAILURE,"No account");return changePg(pp.getUniqueId(),amount,false);}
         if (AdapterManager.BanModiftyBalance()) {
             return new EconomyResponse(0.0D, 0.0D, EconomyResponse.ResponseType.FAILURE,
                     "[BungeeCord] No player in server");

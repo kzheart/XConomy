@@ -33,4 +33,9 @@ public class OrderedWriterTest {
   try {writer.submit(()->fail("caller executed IO"));fail();}catch(RejectedExecutionException expected){}
   gate.countDown();writer.close();
  }
+ @Test public void futuresAfterFailedWriteCompleteExceptionally() throws Exception {
+  OrderedWriter w=new OrderedWriter("futures-storage",10,error->{});CountDownLatch start=new CountDownLatch(1),gate=new CountDownLatch(1);
+  w.submit(()->{start.countDown();try{gate.await();}catch(InterruptedException e){throw new RuntimeException(e);}throw new IllegalStateException("db");});assertTrue(start.await(2,TimeUnit.SECONDS));
+  CompletableFuture<Integer> f=w.call(()->42);gate.countDown();try{f.get(2,TimeUnit.SECONDS);fail();}catch(ExecutionException expected){}try{w.close();fail();}catch(IllegalStateException expected){}
+ }
 }

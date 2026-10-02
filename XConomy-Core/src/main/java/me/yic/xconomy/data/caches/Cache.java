@@ -129,9 +129,8 @@ public class Cache {
     @SuppressWarnings("all")
     public static void removefromCache(final UUID uuid) {
         if (pds.containsKey(uuid)) {
-            String name = pds.get(uuid).getName();
             pds.remove(uuid);
-            uuids.remove(name);
+            uuids.entrySet().removeIf(entry -> uuid.equals(entry.getValue()));
         }
     }
 

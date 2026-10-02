@@ -73,6 +73,7 @@ public class DataCon {
         if (Cache.CacheContainsKey(u)) {
             pd = Cache.getDataFromCache(u);
         }
+        if (pd != null && XConomyLoad.DConfig.isPostgreSQL() && !AdapterManager.PLUGIN.getplayer(pd).isOnline()) pd = null;
         if (pd == null){
             pd = DataLink.getPlayerData(u);
         }
@@ -144,6 +145,15 @@ public class DataCon {
             } else {
                 newvalue = bal.subtract(amount);
             }
+        }
+
+        if(XConomyLoad.DConfig.isPostgreSQL()){
+            try{
+                me.yic.xconomy.data.sql.AtomicBalances.Result r=me.yic.xconomy.data.sql.PgWallet.change(u,amount,isAdd,ri).get(30,java.util.concurrent.TimeUnit.SECONDS);
+                if(!r.successful)throw new IllegalStateException("Insufficient PostgreSQL balance or maximum exceeded");
+                Cache.updateIntoCache(u,pd,r.balance,r.before);return r.balance;
+            }catch(InterruptedException e){Thread.currentThread().interrupt();throw new IllegalStateException("Interrupted balance operation",e);}
+            catch(java.util.concurrent.ExecutionException|java.util.concurrent.TimeoutException e){throw new IllegalStateException("Balance outcome requires reconciliation",e);}
         }
 
         Cache.updateIntoCache(u, pd, newvalue, bal);

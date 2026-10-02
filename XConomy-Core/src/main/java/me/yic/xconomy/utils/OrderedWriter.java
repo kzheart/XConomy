@@ -30,6 +30,15 @@ public final class OrderedWriter implements AutoCloseable {
         });
     }
 
+    public <T> java.util.concurrent.CompletableFuture<T> call(java.util.function.Supplier<T> action) {
+        java.util.concurrent.CompletableFuture<T> result=new java.util.concurrent.CompletableFuture<>();
+        if(failure.get()!=null){result.completeExceptionally(new RejectedExecutionException("Storage writer failed",failure.get()));return result;}
+        try{executor.execute(()->{
+            if(failure.get()!=null){result.completeExceptionally(new RejectedExecutionException("Earlier storage write failed",failure.get()));return;}
+            try{result.complete(action.get());}catch(Throwable error){if(failure.compareAndSet(null,error))errors.accept(error);result.completeExceptionally(error);}
+        });}catch(RuntimeException error){result.completeExceptionally(error);}return result;
+    }
+
     public int pending() { return executor.getQueue().size() + executor.getActiveCount(); }
 
     public boolean healthy() { return failure.get() == null; }
