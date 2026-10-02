@@ -1,5 +1,5 @@
 Settings:
-  #SQLite MySQL MariaDB
+  #SQLite MySQL MariaDB PostgreSQL
   #MariaDB require DatabaseDrivers
   storage-type: SQLite
   #Use connection pool or not
@@ -51,3 +51,13 @@ Redis:
   auth:
     user: ''
     pass: ''
+# PostgreSQL (Mulan fork). jdbc-url overrides host/port/database/sslmode when nonempty.
+PostgreSQL:
+  host: localhost
+  port: 5432
+  user: xconomy
+  pass: ''
+  database: xconomy
+  table-suffix: ''
+  sslmode: prefer
+  jdbc-url: ''

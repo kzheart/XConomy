@@ -33,6 +33,7 @@ import me.yic.xconomy.utils.RedisConnection;
 import java.io.File;
 import java.math.BigDecimal;
 import java.util.List;
+import me.yic.xconomy.utils.StorageWrites;
 import java.util.UUID;
 
 @SuppressWarnings("unused")
@@ -62,6 +63,10 @@ public class DataLink{
                 SQLSetup.setupMySqlTable();
                 break;
 
+            case 4:
+                XConomy.getInstance().logger("数据保存方式", 0, " - PostgreSQL (Mulan fork)");
+                SQLSetup.setupMySqlTable();
+                break;
         }
 
         if (SQL.con()) {
@@ -89,6 +94,7 @@ public class DataLink{
 
         ImportData.isExitsFile();
 
+        StorageWrites.start();
         XConomy.getInstance().logger("XConomy加载成功", 0, null);
         return true;
     }
@@ -110,10 +116,12 @@ public class DataLink{
     }
 
     public static void deletePlayerData(UUID u) {
+        StorageWrites.flush();
         SQL.deletePlayerData(u.toString());
     }
 
     public static BigDecimal getBalNonPlayer(String u) {
+        StorageWrites.flush();
         if (AdapterManager.checkisMainThread()) {
             return CompletableFutureManager.supplyAsync(() -> SQL.getNonPlayerData(u), BigDecimal.ZERO);
         }else{
@@ -126,6 +134,7 @@ public class DataLink{
     }
 
     public static void setTopBalHide(UUID u, int type) {
+        StorageWrites.flush();
         SQL.hidetop(u, type);
     }
 
@@ -141,18 +150,22 @@ public class DataLink{
     }
 
     public static void newPlayer(CPlayer a) {
+        StorageWrites.flush();
         SQLCreateNewAccount.newPlayer(a);
     }
 
     public static boolean newPlayer(UUID uid, String name) {
+        StorageWrites.flush();
         return SQLCreateNewAccount.newPlayer(uid, name, null);
     }
 
     public static boolean newAccount(String name) {
+        StorageWrites.flush();
         return SQLCreateNewAccount.createNonPlayerAccount(name);
     }
 
     public static <T> PlayerData getPlayerData(T key) {
+        StorageWrites.flush();
         if (AdapterManager.checkisMainThread()) {
             return CompletableFutureManager.supplyAsync(() -> exgetPlayerData(key), null);
         }else{

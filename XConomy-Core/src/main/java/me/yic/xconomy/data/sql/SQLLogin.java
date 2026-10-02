@@ -31,6 +31,7 @@ import java.sql.Connection;
 import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.SQLException;
+import java.sql.Timestamp;
 import java.text.SimpleDateFormat;
 import java.util.Date;
 import java.util.UUID;
@@ -49,8 +50,12 @@ public class SQLLogin extends SQL {
             }else{
                 statement.setString(1, uuid.toString());
             }
-            statement.setString(2, sd);
-            statement.setString(3, sd);
+            if (XConomyLoad.DConfig.isPostgreSQL()) {
+                statement.setTimestamp(2, new Timestamp(dd.getTime()));
+                statement.setTimestamp(3, new Timestamp(dd.getTime()));
+            } else {
+                statement.setString(2, sd); statement.setString(3, sd);
+            }
 
             statement.executeUpdate();
             statement.close();

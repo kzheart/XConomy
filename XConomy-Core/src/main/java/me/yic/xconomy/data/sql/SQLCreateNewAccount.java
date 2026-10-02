@@ -122,13 +122,13 @@ public class SQLCreateNewAccount extends SQL {
         try {
             String query;
             if (XConomyLoad.Config.USERNAME_IGNORE_CASE) {
-                if (XConomyLoad.DConfig.isMySQL()) {
+                if (XConomyLoad.DConfig.isServerDatabase()) {
                     query = "select * from " + tableName + " where player = ?";
                 } else {
                     query = "select * from " + tableName + " where player = ? COLLATE NOCASE";
                 }
             } else {
-                if (XConomyLoad.DConfig.isMySQL()) {
+                if (XConomyLoad.DConfig.isServerDatabase()) {
                     query = "select * from " + tableName + " where binary player = ?";
                 } else {
                     query = "select * from " + tableName + " where player = ?";
@@ -163,14 +163,14 @@ public class SQLCreateNewAccount extends SQL {
     private static void createPlayerAccount(String UID, String user, Connection co_a) {
         try {
             String query = "INSERT OR IGNORE INTO " + tableName + "(UID,player,balance,hidden) values(?,?,?,?)";
-            if (XConomyLoad.DConfig.isMySQL()) {
+            if (XConomyLoad.DConfig.isServerDatabase()) {
                 query = query.replace("INSERT OR IGNORE", "INSERT IGNORE");
             }
             PreparedStatement statement = co_a.prepareStatement(query);
             statement.setString(1, UID);
             statement.setString(2, user);
 
-            statement.setDouble(3, ImportData.getBalance(user, XConomyLoad.Config.INITIAL_BAL).doubleValue());
+            setAmount(statement, 3, ImportData.getBalance(user, XConomyLoad.Config.INITIAL_BAL));
 
             int hid = 0;
             if (NonPlayerPlugin.SimpleCheckNonPlayerAccount(user)){
@@ -190,12 +190,12 @@ public class SQLCreateNewAccount extends SQL {
         Connection co = database.getConnectionAndCheck();
         try {
             String query = "INSERT OR IGNORE INTO " + tableNonPlayerName + "(account, balance) values(?,?)";
-            if (XConomyLoad.DConfig.isMySQL()) {
+            if (XConomyLoad.DConfig.isServerDatabase()) {
                 query = query.replace("INSERT OR IGNORE", "INSERT IGNORE");
             }
             PreparedStatement statement = co.prepareStatement(query);
             statement.setString(1, account);
-            statement.setDouble(2, ImportData.getBalance(account, XConomyLoad.Config.INITIAL_BAL).doubleValue());
+            setAmount(statement, 2, ImportData.getBalance(account, XConomyLoad.Config.INITIAL_BAL));
 
             statement.executeUpdate();
             statement.close();
@@ -210,7 +210,7 @@ public class SQLCreateNewAccount extends SQL {
     public static void createDUUIDLink(String UUID, String DUUID, Connection co_a) {
         try {
             String query;
-            if (XConomyLoad.DConfig.isMySQL()) {
+            if (XConomyLoad.DConfig.isServerDatabase()) {
                 query = "INSERT INTO " + tableUUIDName + "(UUID,DUUID) values(?,?) ON DUPLICATE KEY UPDATE DUUID = ?";
             }else{
                 query = "INSERT OR IGNORE INTO " + tableUUIDName + "(UUID,DUUID) values(?,?)";
@@ -218,7 +218,7 @@ public class SQLCreateNewAccount extends SQL {
             PreparedStatement statement = co_a.prepareStatement(query);
             statement.setString(1, UUID);
             statement.setString(2, DUUID);
-            if (XConomyLoad.DConfig.isMySQL()) {
+            if (XConomyLoad.DConfig.isServerDatabase()) {
                 statement.setString(3, DUUID);
             }
 

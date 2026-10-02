@@ -27,6 +27,7 @@ import java.io.File;
 import java.sql.Connection;
 import java.sql.DriverManager;
 import java.sql.SQLException;
+import me.yic.xconomy.data.sql.PostgresDialect;
 
 public class DatabaseConnection {
     private String driver = "com.mysql.jdbc.Driver";
@@ -60,7 +61,7 @@ public class DatabaseConnection {
         hikari.addDataSourceProperty("prepStmtCacheSize", "250");
         hikari.addDataSourceProperty("prepStmtCacheSqlLimit", "2048");
         hikari.addDataSourceProperty("userServerPrepStmts", "true");
-        if (XConomyLoad.DDrivers || XConomy.version.equals("Sponge8")) {
+        if (XConomyLoad.DDrivers || XConomy.version.equals("Sponge8") || XConomyLoad.DConfig.isPostgreSQL()) {
             hikari.setDriverClassName(driver);
         }
         if (hikari.getMinimumIdle() < hikari.getMaximumPoolSize()) {
@@ -79,6 +80,7 @@ public class DatabaseConnection {
     }
 
     private void setDriver() {
+        if (XConomyLoad.DConfig.isPostgreSQL()) { driver = "me.yic.xc_libs.postgresql.Driver"; return; }
         if (XConomy.version.equals("Bukkit") || XConomy.version.equals("Sponge8")) {
             if (XConomyLoad.DDrivers || XConomy.version.equals("Sponge8")) {
                 switch (XConomyLoad.DConfig.getStorageType()) {
@@ -132,6 +134,7 @@ public class DatabaseConnection {
                         break;
                     case 2:
                     case 3:
+                    case 4:
                         connection = DriverManager.getConnection(url, XConomyLoad.DConfig.getuser(), XConomyLoad.DConfig.getpass());
                         break;
                 }
@@ -162,7 +165,9 @@ public class DatabaseConnection {
             return null;
         }
         try {
-            return getConnection();
+            Connection result = getConnection();
+            return XConomyLoad.DConfig.isPostgreSQL()
+                    ? PostgresDialect.wrap(result, XConomyLoad.Config.USERNAME_IGNORE_CASE) : result;
         } catch (SQLException e1) {
             if (isfirstry) {
                 isfirstry = false;
@@ -182,6 +187,8 @@ public class DatabaseConnection {
         if (XConomyLoad.DConfig.EnableConnectionPool) {
             return hikari.getConnection();
         } else {
+            if (XConomyLoad.DConfig.getStorageType() == 1) return DriverManager.getConnection("jdbc:sqlite:" + userdata.toString());
+            if (XConomyLoad.DConfig.isPostgreSQL()) return DriverManager.getConnection(url, XConomyLoad.DConfig.getuser(), XConomyLoad.DConfig.getpass());
             return connection;
         }
     }
@@ -222,10 +229,9 @@ public class DatabaseConnection {
     }
 
     public void closeHikariConnection(Connection connection) {
-        if (!XConomyLoad.DConfig.EnableConnectionPool) {
-            return;
-        }
-
+        if (!XConomyLoad.DConfig.EnableConnectionPool && XConomyLoad.DConfig.getStorageType() != 1
+                && !XConomyLoad.DConfig.isPostgreSQL()) return;
+        if (connection == null) return;
         try {
             connection.close();
         } catch (SQLException e) {

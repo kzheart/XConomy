@@ -39,7 +39,7 @@ public class SQLUpdateTable extends SQL {
             try {
                 XConomy.getInstance().logger("升级数据库表格。。。", 0, tableName);
 
-                PreparedStatement statementb = connection.prepareStatement("alter table " + tableName + " add column hidden int(5) not null default '0'");
+                PreparedStatement statementb = connection.prepareStatement("alter table " + tableName + " add column hidden integer not null default '0'");
 
                 statementb.executeUpdate();
                 statementb.close();

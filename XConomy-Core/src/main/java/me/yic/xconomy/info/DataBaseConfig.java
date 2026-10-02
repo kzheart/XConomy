@@ -30,10 +30,11 @@ public class DataBaseConfig {
     public static CConfig config;
 
     public void Initialization() {
-        if (!XConomyLoad.Config.DISABLE_CACHE) {
-            if (getStorageType() != 1) {
-                canasync = true;
-            }
+        canasync = !XConomyLoad.Config.DISABLE_CACHE;
+        if (isPostgreSQL()) {
+            String suffix = gettablesuffix().replace("%sign%", XConomyLoad.Config.SYNCDATA_SIGN);
+            if (!suffix.matches("[a-zA-Z0-9_]{0,45}"))
+                throw new IllegalArgumentException("PostgreSQL.table-suffix 仅允许字母、数字和下划线，最多 45 个字符");
         }
         setHikariConnectionPooling();
     }
@@ -50,6 +51,10 @@ public class DataBaseConfig {
         }else if (config.getString("Settings.storage-type").equalsIgnoreCase("MariaDB")) {
             return 3;
         }
+        if (config.getString("Settings.storage-type").equalsIgnoreCase("PostgreSQL")
+                || config.getString("Settings.storage-type").equalsIgnoreCase("PG")) return 4;
+        if (!config.getString("Settings.storage-type").equalsIgnoreCase("SQLite"))
+            throw new IllegalArgumentException("未知 storage-type，支持 SQLite/MySQL/MariaDB/PostgreSQL");
         return 1;
     }
 
@@ -83,7 +88,12 @@ public class DataBaseConfig {
         return getStorageType() == 2 || getStorageType() == 3;
     }
 
+    public boolean isPostgreSQL() { return getStorageType() == 4; }
+
+    public boolean isServerDatabase() { return isMySQL() || isPostgreSQL(); }
+
     public String gethost() {
+        if (isPostgreSQL()) return config.getString("PostgreSQL.host");
         if (getStorageType() == 1) {
             return config.getString("SQLite.path");
         } else if (getStorageType() == 2 || getStorageType() == 3) {
@@ -93,6 +103,7 @@ public class DataBaseConfig {
     }
 
     public String getuser() {
+        if (isPostgreSQL()) return config.getString("PostgreSQL.user");
         if (getStorageType() == 2 || getStorageType() == 3) {
             return config.getString("MySQL.user");
         }
@@ -100,6 +111,7 @@ public class DataBaseConfig {
     }
 
     public String getpass() {
+        if (isPostgreSQL()) return config.getString("PostgreSQL.pass");
         if (getStorageType() == 2 || getStorageType() == 3) {
             return config.getString("MySQL.pass");
         }
@@ -107,6 +119,7 @@ public class DataBaseConfig {
     }
 
     public String gettablesuffix() {
+        if (isPostgreSQL()) return config.getString("PostgreSQL.table-suffix");
         if (getStorageType() == 2 || getStorageType() == 3) {
             return config.getString("MySQL.table-suffix");
         }
@@ -115,6 +128,16 @@ public class DataBaseConfig {
 
 
     public String geturl() {
+        if (isPostgreSQL()) {
+            String explicit = config.getString("PostgreSQL.jdbc-url");
+            if (explicit != null && !explicit.isEmpty()) {
+                if (!explicit.startsWith("jdbc:postgresql:")) throw new IllegalArgumentException("PostgreSQL.jdbc-url 必须使用 jdbc:postgresql");
+                return explicit;
+            }
+            return "jdbc:postgresql://" + config.getString("PostgreSQL.host") + ":"
+                    + config.getString("PostgreSQL.port") + "/" + config.getString("PostgreSQL.database")
+                    + "?sslmode=" + config.getString("PostgreSQL.sslmode") + "&connectTimeout=5&socketTimeout=10";
+        }
         if (getStorageType() == 2 || getStorageType() == 3) {
             String url = "jdbc:mysql://";
             if (getStorageType() == 3){
@@ -148,6 +171,9 @@ public class DataBaseConfig {
                 break;
             case 3:
                 XConomy.getInstance().logger(null, 0, mess.replace("%type%", "MariaDB"));
+                break;
+            case 4:
+                XConomy.getInstance().logger(null, 0, mess.replace("%type%", "PostgreSQL"));
                 break;
         }
     }

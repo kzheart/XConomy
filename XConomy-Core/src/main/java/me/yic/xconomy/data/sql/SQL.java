@@ -106,7 +106,7 @@ public class SQL {
                     + "(UUID varchar(50) not null, last_time datetime not null, " + "primary key (UUID)) default charset = " + encoding + ";";
 
             String query5;
-            if (XConomyLoad.DConfig.isMySQL()) {
+            if (XConomyLoad.DConfig.isServerDatabase()) {
                 query1 = "create table if not exists " + tableName
                         + "(UID varchar(50) not null, player varchar(50) not null, balance double(20,2) not null, hidden int(5) not null, "
                         + "primary key (UID)) default charset = " + encoding + ";";
@@ -135,7 +135,7 @@ public class SQL {
             if (XConomyLoad.Config.UUIDMODE.equals(UUIDMode.SEMIONLINE)) {
                 statement.executeUpdate(query5);
             }
-            if (XConomyLoad.DConfig.isMySQL() && XConomyLoad.Config.TRANSACTION_RECORD) {
+            if (XConomyLoad.DConfig.isServerDatabase() && XConomyLoad.Config.TRANSACTION_RECORD) {
                 statement.executeUpdate(query3);
                 if (XConomyLoad.Config.PAY_TIPS) {
                     statement.executeUpdate(query4);
@@ -193,13 +193,13 @@ public class SQL {
             String query;
 
             if (XConomyLoad.Config.USERNAME_IGNORE_CASE) {
-                if (XConomyLoad.DConfig.isMySQL()) {
+                if (XConomyLoad.DConfig.isServerDatabase()) {
                     query = "select * from " + tableName + " where player = ?";
                 } else {
                     query = "select * from " + tableName + " where player = ? COLLATE NOCASE";
                 }
             } else {
-                if (XConomyLoad.DConfig.isMySQL()) {
+                if (XConomyLoad.DConfig.isServerDatabase()) {
                     query = "select * from " + tableName + " where binary player = ?";
                 } else {
                     query = "select * from " + tableName + " where player = ?";
@@ -244,7 +244,7 @@ public class SQL {
             Connection connection = database.getConnectionAndCheck();
             String query;
 
-            if (XConomyLoad.DConfig.isMySQL()) {
+            if (XConomyLoad.DConfig.isServerDatabase()) {
                 query = "select * from " + tableNonPlayerName + " where binary account = ?";
             } else {
                 query = "select * from " + tableNonPlayerName + " where account = ?";
@@ -270,31 +270,29 @@ public class SQL {
 
     public static void save(PlayerData pd, Boolean isAdd, BigDecimal amount, RecordInfo ri) {
         Connection connection = database.getConnectionAndCheck();
+        if (connection == null) throw new IllegalStateException("No database connection for balance save: " + pd.getUniqueId());
         try {
-            String query = " set balance = ? where UID = ?";
-//            if (XConomyLoad.Config.DISABLE_CACHE) {
-            if (isAdd != null) {
-                if (isAdd) {
-                    query = " set balance = balance + ? where UID = ?";
-                } else {
-                    query = " set balance = balance - ? where UID = ?";
-                }
+            connection.setAutoCommit(false);
+            String update = isAdd == null ? "balance = ?" : isAdd ? "balance = balance + ?" : "balance = balance - ?";
+            try (PreparedStatement statement = connection.prepareStatement("update " + tableName + " set " + update + " where UID = ?")) {
+                setAmount(statement, 1, amount);
+                statement.setString(2, pd.getUniqueId().toString());
+                if (statement.executeUpdate() != 1) throw new SQLException("Balance account missing: " + pd.getUniqueId());
             }
-//            }
-            PreparedStatement statement = connection.prepareStatement("update " + tableName + query);
-//            if (!XConomyLoad.Config.DISABLE_CACHE) {
-//                statement.setDouble(1, pd.getBalance().doubleValue());
-//            } else {
-            statement.setDouble(1, amount.doubleValue());
-//            }
-            statement.setString(2, pd.getUniqueId().toString());
-            statement.executeUpdate();
-            statement.close();
-        } catch (SQLException e) {
-            e.printStackTrace();
+            record(connection, pd, isAdd, amount, pd.getBalance(), ri);
+            connection.commit();
+        } catch (SQLException | RuntimeException error) {
+            try { connection.rollback(); } catch (SQLException rollback) { error.addSuppressed(rollback); }
+            throw new IllegalStateException("Balance persistence failed: " + pd.getUniqueId(), error);
+        } finally {
+            try { connection.setAutoCommit(true); } catch (SQLException ignored) { }
+            database.closeHikariConnection(connection);
         }
-        record(connection, pd, isAdd, amount, pd.getBalance(), ri);
-        database.closeHikariConnection(connection);
+    }
+
+    protected static void setAmount(PreparedStatement statement, int index, BigDecimal amount) throws SQLException {
+        if (XConomyLoad.DConfig.isPostgreSQL()) statement.setBigDecimal(index, amount);
+        else statement.setDouble(index, amount.doubleValue());
     }
 
     //public static void save(String type, PlayerData pd, Boolean isAdd,
@@ -321,9 +319,9 @@ public class SQL {
     //            DataCon.refreshFromCache(u);
     //            PlayerData npd = DataCon.cachecorrection(u, amount, isAdd);
     //            if (isAdd) {
-    //               query = " set balance = balance + " + amount.doubleValue() + " where UID = ?";
+    //               query = " set balance = balance + " + amount.toPlainString() + " where UID = ?";
     //            } else {
-    //                query = " set balance = balance - " + amount.doubleValue() + " where UID = ?";
+    //                query = " set balance = balance - " + amount.toPlainString() + " where UID = ?";
     //            }
     //            PreparedStatement statement2 = connection.prepareStatement("update " + tableName + query);
     //            statement2.setString(1, u.toString());
@@ -344,9 +342,9 @@ public class SQL {
             if (targettype.equalsIgnoreCase("all")) {
                 String query;
                 if (isAdd) {
-                    query = " set balance = balance + " + amount.doubleValue();
+                    query = " set balance = balance + " + amount.toPlainString();
                 } else {
-                    query = " set balance = balance - " + amount.doubleValue();
+                    query = " set balance = balance - " + amount.toPlainString();
                 }
                 PreparedStatement statement = connection.prepareStatement("update " + tableName + query);
                 statement.executeUpdate();
@@ -385,31 +383,28 @@ public class SQL {
     public static void saveNonPlayer(String account, BigDecimal amount,
                                      BigDecimal newbalance, Boolean isAdd, RecordInfo ri) {
         Connection connection = database.getConnectionAndCheck();
+        if (connection == null) throw new IllegalStateException("No connection for account " + account);
         try {
-            String query = " set balance = ? where account = ?";
-            if (XConomyLoad.Config.DISABLE_CACHE) {
-                if (isAdd != null) {
-                    if (isAdd) {
-                        query = " set balance = balance + ? where account = ?";
-                    } else {
-                        query = " set balance = balance - ? where account = ?";
-                    }
-                }
+            connection.setAutoCommit(false);
+            String update = "balance = ?";
+            BigDecimal value = newbalance;
+            if (XConomyLoad.Config.DISABLE_CACHE && isAdd != null) {
+                update = isAdd ? "balance = balance + ?" : "balance = balance - ?";
+                value = amount;
             }
-            PreparedStatement statement = connection.prepareStatement("update " + tableNonPlayerName + query);
-            if (!XConomyLoad.Config.DISABLE_CACHE) {
-                statement.setDouble(1, newbalance.doubleValue());
-            } else {
-                statement.setDouble(1, amount.doubleValue());
+            try (PreparedStatement statement = connection.prepareStatement("update " + tableNonPlayerName + " set " + update + " where account = ?")) {
+                setAmount(statement, 1, value); statement.setString(2, account);
+                if (statement.executeUpdate() != 1) throw new SQLException("Non-player account missing: " + account);
             }
-            statement.setString(2, account);
-            statement.executeUpdate();
-            statement.close();
-        } catch (SQLException e) {
-            e.printStackTrace();
+            record(connection, new PlayerData(null, account, null), isAdd, amount, newbalance, ri);
+            connection.commit();
+        } catch (SQLException | RuntimeException error) {
+            try { connection.rollback(); } catch (SQLException rollback) { error.addSuppressed(rollback); }
+            throw new IllegalStateException("Non-player persistence failed: " + account, error);
+        } finally {
+            try { connection.setAutoCommit(true); } catch (SQLException ignored) { }
+            database.closeHikariConnection(connection);
         }
-        record(connection, new PlayerData(null, account, null), isAdd, amount, newbalance, ri);
-        database.closeHikariConnection(connection);
     }
 
 
@@ -496,7 +491,7 @@ public class SQL {
 
     public static void record(Connection co, PlayerData pd, Boolean isAdd,
                               BigDecimal amount, BigDecimal newbalance, RecordInfo ri) {
-        if (XConomyLoad.DConfig.isMySQL() && XConomyLoad.Config.TRANSACTION_RECORD) {
+        if (XConomyLoad.DConfig.isServerDatabase() && XConomyLoad.Config.TRANSACTION_RECORD) {
             String uid = "N/A";
             String name = "N/A";
             String operation;
@@ -524,16 +519,17 @@ public class SQL {
                 statement.setString(1, ri.getType());
                 statement.setString(2, uid);
                 statement.setString(3, name);
-                statement.setDouble(4, newbalance.doubleValue());
-                statement.setDouble(5, amount.doubleValue());
+                setAmount(statement, 4, newbalance);
+                setAmount(statement, 5, amount);
                 statement.setString(6, operation);
                 statement.setString(7, ri.getCommand());
                 statement.setString(8, ri.getComment());
-                statement.setString(9, sd);
+                if (XConomyLoad.DConfig.isPostgreSQL()) statement.setTimestamp(9, new Timestamp(dd.getTime()));
+                else statement.setString(9, sd);
                 statement.executeUpdate();
                 statement.close();
             } catch (SQLException e) {
-                e.printStackTrace();
+                throw new IllegalStateException("Transaction record failed", e);
             }
         }
     }

@@ -74,6 +74,7 @@ public class XConomyLoad{
 
         //AdapterManager.ScheduledThreadPool.shutdown();
         //AdapterManager.FixedThreadPool.shutdown();
+        me.yic.xconomy.utils.StorageWrites.close();
         SQL.close();
     }
 

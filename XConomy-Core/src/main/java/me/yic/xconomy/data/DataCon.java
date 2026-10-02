@@ -34,6 +34,7 @@ import me.yic.xconomy.info.MessageConfig;
 import me.yic.xconomy.info.RecordInfo;
 import me.yic.xconomy.info.SyncChannalType;
 import me.yic.xconomy.utils.SendPluginMessage;
+import me.yic.xconomy.utils.StorageWrites;
 
 import java.math.BigDecimal;
 import java.util.UUID;
@@ -147,19 +148,14 @@ public class DataCon {
 
         Cache.updateIntoCache(u, pd, newvalue, bal);
 
-        if (XConomyLoad.DConfig.canasync && AdapterManager.checkisMainThread()) {
-            AdapterManager.runTaskAsynchronously(() -> {
-                DataLink.save(pd, isAdd, amount, ri);
-                if (XConomyLoad.getSyncData_Enable()) {
-                    SendMessTask(pd);
-                }
-            });
-        } else {
-            DataLink.save(pd, isAdd, amount, ri);
-            if (XConomyLoad.getSyncData_Enable()) {
-                SendMessTask(pd);
-            }
+        PlayerData snapshot = new PlayerData(u, pd.getName(), newvalue);
+        snapshot.setVerifyBalance(bal);
+        try { StorageWrites.submit(() -> DataLink.save(snapshot, isAdd, amount, ri)); }
+        catch (RuntimeException error) {
+            Cache.updateIntoCache(u, pd, bal, bal);
+            throw error;
         }
+        if (XConomyLoad.getSyncData_Enable()) SendMessTask(snapshot);
 
         return newvalue;
     }
@@ -182,24 +178,22 @@ public class DataCon {
         }
         CacheNonPlayer.insertIntoCache(u, newvalue);
 
-        if (XConomyLoad.DConfig.canasync && AdapterManager.checkisMainThread()) {
-            final BigDecimal fnewvalue = newvalue;
-            AdapterManager.runTaskAsynchronously(() -> DataLink.saveNonPlayer(u, amount, fnewvalue, isAdd, ri));
-        } else {
-            DataLink.saveNonPlayer(u, amount, newvalue, isAdd, ri);
-        }
+        final BigDecimal snapshot = newvalue;
+        try { StorageWrites.submit(() -> DataLink.saveNonPlayer(u, amount, snapshot, isAdd, ri)); }
+        catch (RuntimeException error) { CacheNonPlayer.insertIntoCache(u, balance); throw error; }
+
     }
 
     public static void changeallplayerdata(String targettype, String type, BigDecimal amount, Boolean isAdd, String command, StringBuilder comment) {
+        StorageWrites.flush();
         Cache.clearCache();
 
         RecordInfo ri = new RecordInfo(type, command, comment);
 
-        if (XConomyLoad.DConfig.canasync && AdapterManager.checkisMainThread()) {
-            AdapterManager.runTaskAsynchronously(() -> DataLink.saveall(targettype, amount, isAdd, ri));
-        } else {
-            DataLink.saveall(targettype, amount, isAdd, ri);
-        }
+        java.util.List<UUID> players = targettype.equalsIgnoreCase("online")
+                ? new java.util.ArrayList<>(AdapterManager.PLUGIN.getOnlinePlayersUUIDs()) : null;
+        StorageWrites.submit(() -> me.yic.xconomy.data.sql.SQL.saveall(targettype, players, amount, isAdd, ri));
+        StorageWrites.flush(); // The global operation invalidates every cached balance.
 
         boolean isallbool = targettype.equals("all");
         //if (targettype.equals("all")) {
